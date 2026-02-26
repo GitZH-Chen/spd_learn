@@ -303,6 +303,10 @@ html_copy_source = False
 # Point 6: SEO - Add canonical URLs
 html_baseurl = "https://spdlearn.org/"
 
+# Fix sitemap URLs - current deployment is single-version at root,
+# so don't prefix with language/version directories
+sitemap_url_scheme = "{link}"
+
 # Point 7: Copy root-level site files (robots.txt, BingSiteAuth.xml, etc.)
 html_extra_path = ["_extra"]
 
@@ -549,3 +553,14 @@ def linkcode_resolve(domain, info):
         pass
 
     return f"https://github.com/{github_user}/{github_repo}/blob/{github_version}/{relpath}{linespec}"
+
+
+def _fix_index_canonical_url(app, pagename, templatename, context, doctree):
+    """Strip index.html from canonical URLs so Google indexes clean directory URLs."""
+    pageurl = context.get("pageurl", "")
+    if pageurl and pageurl.endswith("/index.html"):
+        context["pageurl"] = pageurl[: -len("index.html")]
+
+
+def setup(app):
+    app.connect("html-page-context", _fix_index_canonical_url)
