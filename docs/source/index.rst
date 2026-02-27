@@ -623,7 +623,7 @@
              <img src="_static/support/inria_red.png" alt="Inria" class="logo-dark" style="height: 300px; width: auto;">
            </div>
            <div class="logo-item">
-             <img src="_static/support/cnrs_dark.png" alt="CNRS" class="logo-light" style="height:  300px; width: auto;">
+             <img src="_static/support/cnrs_white.png" alt="CNRS" class="logo-light" style="height:  300px; width: auto;">
              <img src="_static/support/cnrs_white.png" alt="CNRS" class="logo-dark" style="height:  300px; width: auto;">
            </div>
            <div class="logo-item">
@@ -631,7 +631,7 @@
              <img src="_static/support/cea_white.png" alt="CEA" class="logo-dark" style="height:  300px; width: auto;">
            </div>
            <div class="logo-item">
-             <img src="_static/support/paris_saclay_dark.png" alt="Université Paris-Saclay" class="logo-light" style="height: 300px; width: auto;">
+             <img src="_static/support/paris_saclay_white.png" alt="Université Paris-Saclay" class="logo-light" style="height: 300px; width: auto;">
              <img src="_static/support/paris_saclay_white.png" alt="Université Paris-Saclay" class="logo-dark" style="height: 300px; width: auto;">
            </div>
            <div class="logo-item">
@@ -641,6 +641,10 @@
            <div class="logo-item">
              <img src="_static/support/ucsd_dark.svg" alt="UC San Diego" class="logo-light" style="height: 300px; width: auto;">
              <img src="_static/support/ucsd_dark.svg" alt="UC San Diego" class="logo-dark" style="height: 300px; width: auto;">
+           </div>
+           <div class="logo-item">
+             <img src="_static/support/yneuro_white.png" alt="Yneuro" class="logo-light" style="height: 300px; width: auto;">
+             <img src="_static/support/yneuro_dark.png" alt="Yneuro" class="logo-dark" style="height: 300px; width: auto;">
            </div>
            <div class="logo-item">
              <img src="_static/support/usmb_dark.png" alt="Université Savoie Mont Blanc" class="logo-light" style="height: 300px; width: auto;">
