@@ -624,7 +624,7 @@
            </div>
            <div class="logo-item">
              <img src="_static/support/cnrs_white.png" alt="CNRS" class="logo-light" style="height:  300px; width: auto;">
-             <img src="_static/support/cnrs_dark.png" alt="CNRS" class="logo-dark" style="height:  300px; width: auto;">
+             <img src="_static/support/cnrs_white.png" alt="CNRS" class="logo-dark" style="height:  300px; width: auto;">
            </div>
            <div class="logo-item">
              <img src="_static/support/cea_dark.png" alt="CEA" class="logo-light" style="height:  300px; width: auto;">
