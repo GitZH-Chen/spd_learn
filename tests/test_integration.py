@@ -30,18 +30,24 @@ mandatory_parameters_per_module = {
     ),
 }
 
+DEVICES = [
+    "cpu",
+    pytest.param(
+        "cuda",
+        marks=pytest.mark.skipif(
+            not torch.cuda.is_available(), reason="CUDA not available"
+        ),
+    ),
+]
+
 
 @pytest.mark.parametrize("model_name", model_list)
 def test_integration(model_name):
     model_class = getattr(spd_learn.models, model_name)
 
-    params = {}
+    params = {"sfreq": 125} if model_name == "Green" else {}
     if model_name == "TensorCSPNet":
-        # TensorCSPNet requires a different input shape
         x = torch.randn(2, 9, 22, 1000)
-    elif model_name == "Green":
-        params = {"sfreq": 125}
-        x = torch.randn(2, 22, 1000)
     else:
         x = torch.randn(2, 22, 1000)
 
@@ -89,20 +95,7 @@ def test_module_expose_device_dtype(module_name):
     assert layer is not None
 
 
-# Test that all parameters of the module are on the expected device.
-@pytest.mark.parametrize(
-    "device",
-    [
-        "cpu",
-        pytest.param(
-            "cuda",
-            marks=pytest.mark.skipif(
-                not torch.cuda.is_available(), reason="CUDA not available"
-            ),
-        ),
-        # pytest.param("mps", marks=pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS not available (MAC only)"))
-    ],
-)
+@pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("module_name", module_list)
 def test_module_parameters_on_device(module_name, device):
     """Instantiate the module on the given device and verify that each parameter is located on that device."""
@@ -119,29 +112,7 @@ def test_module_parameters_on_device(module_name, device):
         )
 
 
-# Optionally, test that all submodules’ parameters are on the expected device.
-@pytest.mark.parametrize(
-    "device", ["cpu"]
-)  # if you want to test submodules only on CPU in CI, or parameterize as above
-@pytest.mark.parametrize("module_name", module_list)
-def test_module_submodules_on_device(module_name, device):
-    """Verify that for each submodule in the module, its parameters are on the correct device."""
-    module_class = getattr(spd_learn.modules, module_name)
-    dtype = torch.float32
-    mandatory_param = mandatory_parameters_per_module.get(module_name, {})
-
-    module = module_class(device=device, dtype=dtype, **mandatory_param)
-    for submodule in module.modules():
-        for name, param in submodule.named_parameters(recurse=False):
-            assert param.device.type == device, (
-                f"Submodule parameter '{name}' in {submodule} is on {param.device} but expected {device}"
-            )
-
-
-# Optionally, test that all buffers are on the expected device.
-@pytest.mark.parametrize(
-    "device", ["cpu"]
-)  # if you want to test buffers only on CPU in CI, or parameterize as above
+@pytest.mark.parametrize("device", ["cpu"])
 @pytest.mark.parametrize("module_name", module_list)
 def test_module_buffers_on_device(module_name, device):
     """Verify that all buffers in the module are on the correct device."""
@@ -156,18 +127,7 @@ def test_module_buffers_on_device(module_name, device):
         )
 
 
-@pytest.mark.parametrize(
-    "device",
-    [
-        "cpu",
-        pytest.param(
-            "cuda",
-            marks=pytest.mark.skipif(
-                not torch.cuda.is_available(), reason="CUDA not available"
-            ),
-        ),
-    ],
-)
+@pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize(
     "dtype",
     [torch.float32, torch.float64, torch.complex64, torch.complex128],
@@ -213,16 +173,71 @@ def test_module_dtype(module_name, dtype, device):
         x = torch.randn(2, 10, 1000, dtype=dtype)
         x = CovLayer(device=device, dtype=dtype)(x)
 
-        # checking if torch.linalg.eigh is available
-        if dtype == torch.float16:
-            with pytest.raises(RuntimeError):
-                with torch.no_grad():
-                    out = module(x)
-
         with torch.no_grad():
             out = module(x)
 
     assert out.dtype == dtype
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("module_name", module_list)
+def test_module_output_device(module_name, device):
+    """Run a forward pass and verify the output tensor is on the expected device."""
+    if module_name == "PositiveDefiniteScalar":
+        pytest.skip(
+            "PositiveDefiniteScalar is a scalar parametrization, not a matrix layer."
+        )
+
+    dtype = torch.float32
+    module_class = getattr(spd_learn.modules, module_name)
+    mandatory_param = mandatory_parameters_per_module.get(module_name, {})
+    module = module_class(device=device, dtype=dtype, **mandatory_param)
+
+    if module_name in ("CovLayer", "WaveletConv"):
+        x = torch.randn(2, 10, 1000, device=device, dtype=dtype)
+    elif module_name == "LogEuclideanResidual":
+        raw = torch.randn(2, 10, 1000, device=device, dtype=dtype)
+        cov = CovLayer(device=device, dtype=dtype)
+        x = cov(raw)
+        y = cov(torch.randn(2, 10, 1000, device=device, dtype=dtype))
+        with torch.no_grad():
+            out = module(x, y)
+        assert out.device.type == device, (
+            f"Output is on {out.device} but expected {device}"
+        )
+        return
+    else:
+        raw = torch.randn(2, 10, 1000, device=device, dtype=dtype)
+        x = CovLayer(device=device, dtype=dtype)(raw)
+
+    with torch.no_grad():
+        out = module(x)
+
+    assert out.device.type == device, (
+        f"Output is on {out.device} but expected {device}"
+    )
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("model_name", model_list)
+def test_integration_on_device(model_name, device):
+    """Create a model, move it to the target device, and verify output shape and device."""
+    params = {"sfreq": 125} if model_name == "Green" else {}
+    if model_name == "TensorCSPNet":
+        x = torch.randn(2, 9, 22, 1000, device=device)
+    else:
+        x = torch.randn(2, 22, 1000, device=device)
+
+    model = getattr(spd_learn.models, model_name)(n_chans=22, n_outputs=2, **params)
+    model.to(device)
+
+    with torch.no_grad():
+        out = model(x)
+
+    assert out.shape == (2, 2), f"Expected shape (2, 2) but got {out.shape}"
+    assert out.device.type == device, (
+        f"Output is on {out.device} but expected {device}"
+    )
 
 
 # Batch shapes to test broadcast compatibility
