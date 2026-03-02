@@ -213,9 +213,7 @@ def test_module_output_device(module_name, device):
     with torch.no_grad():
         out = module(x)
 
-    assert out.device.type == device, (
-        f"Output is on {out.device} but expected {device}"
-    )
+    assert out.device.type == device, f"Output is on {out.device} but expected {device}"
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -235,9 +233,7 @@ def test_integration_on_device(model_name, device):
         out = model(x)
 
     assert out.shape == (2, 2), f"Expected shape (2, 2) but got {out.shape}"
-    assert out.device.type == device, (
-        f"Output is on {out.device} but expected {device}"
-    )
+    assert out.device.type == device, f"Output is on {out.device} but expected {device}"
 
 
 # Batch shapes to test broadcast compatibility
