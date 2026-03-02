@@ -134,22 +134,24 @@ class WaveletConv(nn.Module):
         tmax = kernel_width_s / 2.0
         tmin = -tmax
         kernel_length = int(kernel_width_s * sfreq)
-        self.register_buffer("tt", torch.linspace(tmin, tmax, kernel_length))
+        self.register_buffer(
+            "tt", torch.linspace(tmin, tmax, kernel_length, device=device)
+        )
 
         # Convert foi_init to tensor if needed
         if isinstance(foi_init, Tensor):
-            foi_tensor = foi_init.detach().clone()
+            foi_tensor = foi_init.detach().clone().to(device=device)
         else:
-            foi_tensor = torch.tensor(foi_init)
+            foi_tensor = torch.tensor(foi_init, device=device)
 
         # Generate default fwhm_init if not provided, then convert to tensor
         if fwhm_init is None:
             # Default: FWHM decreases with frequency (negative values in log scale)
             fwhm_tensor = -foi_tensor
         elif isinstance(fwhm_init, Tensor):
-            fwhm_tensor = fwhm_init.detach().clone()
+            fwhm_tensor = fwhm_init.detach().clone().to(device=device)
         else:
-            fwhm_tensor = torch.tensor(fwhm_init)
+            fwhm_tensor = torch.tensor(fwhm_init, device=device)
 
         self.foi = nn.Parameter(foi_tensor, requires_grad=True)
         self.fwhm = nn.Parameter(fwhm_tensor, requires_grad=True)
