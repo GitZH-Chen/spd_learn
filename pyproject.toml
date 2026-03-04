@@ -74,7 +74,6 @@ docs = [
 brain = [
     'moabb',
     'braindecode',
-    'moabb',
     'nilearn',
     'pyriemann',
     'skada',

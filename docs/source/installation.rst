@@ -49,7 +49,7 @@ For EEG and fMRI applications:
 
 .. code-block:: bash
 
-   pip install spd_learn[brain]
+   pip install "spd_learn[brain]"
 
 This installs:
 
@@ -64,7 +64,7 @@ To build the documentation locally:
 
 .. code-block:: bash
 
-   pip install spd_learn[docs]
+   pip install "spd_learn[docs]"
 
 Testing
 ^^^^^^^
@@ -73,7 +73,7 @@ For running the test suite:
 
 .. code-block:: bash
 
-   pip install spd_learn[tests]
+   pip install "spd_learn[tests]"
 
 All Dependencies
 ^^^^^^^^^^^^^^^^
@@ -82,7 +82,7 @@ To install all optional dependencies:
 
 .. code-block:: bash
 
-   pip install spd_learn[all]
+   pip install "spd_learn[all]"
 
 Verifying Installation
 ----------------------
