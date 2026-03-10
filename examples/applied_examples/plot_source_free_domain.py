@@ -66,6 +66,7 @@ maintaining class diversity (high $H(\bar{Y})$).
 # %pip install spd_learn
 # %pip install geoopt
 
+#%%
 import math
 import warnings
 
@@ -81,8 +82,6 @@ from sklearn.metrics import balanced_accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from skorch.callbacks import GradientNormClipping
 from skorch.dataset import ValidSplit
-from geoopt.optim import RiemannianAdam
-from spdnets.manifolds import SymmetricPositiveDefinite  #! how to introduce the defined manifold in the code?
 
 from spd_learn.functional import (
     get_epsilon,
@@ -96,6 +95,7 @@ from spd_learn.modules import LogEig
 
 warnings.filterwarnings("ignore")
 
+#%%
 """### Define the SPD manifold
 
 ### SPDIM Geometric Operations
@@ -176,6 +176,7 @@ def karcher_mean(X, max_iter=50, return_distances=False):
 
     return G
 
+#%%
 """## Loading the Dataset
 
 We use **BNCI2015_001** (2-class motor imagery: right hand vs feet),
@@ -247,6 +248,7 @@ print(f"Source domain: {len(X_source)} samples")
 print(f"Target domain: {len(target_ds)} samples")
 print(f"Classes: {le.classes_}")
 
+#%%
 """### Simulating Label Shift in Target Domain
 
 A key contribution of SPDIM is handling **label shift** — when the
@@ -299,6 +301,7 @@ for c in np.unique(y_target_shifted):
     n = (y_target_shifted == c).sum()
     print(f"  Class {le.classes_[c]}: {n} ({100 * n / len(y_target_shifted):.0f}%)")
 
+#%%
 """## Training TSMNet on Source Domain
 
 We train TSMNet using braindecode's ``EEGClassifier`` wrapper with:
@@ -333,13 +336,13 @@ clf = EEGClassifier(
     model,
     criterion=torch.nn.CrossEntropyLoss,
     optimizer=torch.optim.AdamW,
-    optimizer__lr=1e-3,
+    optimizer__lr=1e-4,
     optimizer__weight_decay=1e-4,
     train_split=ValidSplit(0.1, stratified=True, random_state=42),
     batch_size=32,
     max_epochs=200,
     callbacks=[
-        ("gradient_clip", GradientNormClipping(gradient_clip_value=1.0)),
+        ("gradient_clip", GradientNormClipping(gradient_clip_value=5.0)),
     ],
     device=device,
     verbose=1,
@@ -350,6 +353,7 @@ print("Training TSMNet on Source Domain")
 print("=" * 50)
 clf.fit(X_source, y_source)
 
+#%%
 """## Baseline: No Adaptation
 
 Evaluate the source-trained model on target domain without adaptation.
@@ -373,6 +377,7 @@ print(f"Source Balanced Accuracy: {source_bacc * 100:.2f}%")
 print(f"Target Balanced Accuracy: {no_adapt_bacc * 100:.2f}%")
 print(f"Performance Drop: {(source_bacc - no_adapt_bacc) * 100:.2f}%")
 
+#%%
 """## Helper Functions
 
 For SPDIM, we intercept TSMNet's forward pass before
@@ -405,7 +410,7 @@ def extract_spd_features(model, X_data, batch_size=32):
     return torch.cat(spd_list, dim=0)
 
 #! mark for the
-def spdim_forward(model, X_spd, parameter_t, fm_mean=None):
+def spdim_forward(model, X_spd, adapter=None):
     """SPDIM test-time forward pass.
 
     Matches the original SPDIM test-time pipeline
@@ -416,12 +421,10 @@ def spdim_forward(model, X_spd, parameter_t, fm_mean=None):
     2. LogEig (tangent space mapping)
     3. Classifier
     """
-    ref_mean = fm_mean if fm_mean is not None else target_karcher_mean
-    if ref_mean.ndim == 3:
-        ref_mean = ref_mean.squeeze(0)
 
     # Geodesic transport (replaces BN centering)
-    X_transported = geodesic_transport_to_identity(X_spd, ref_mean, parameter_t)
+    if adapter is not None:
+        X_transported = adapter(X_spd)
 
     # LogEig + classifier
     logeig = LogEig(upper=True, flatten=True)
@@ -431,6 +434,7 @@ def spdim_forward(model, X_spd, parameter_t, fm_mean=None):
     logits = model.head(X_tangent.to(dev, dtype=dtype))
     return logits
 
+#%%
 """## SFUDA Step 1: Refit BN Statistics (RCT Baseline)
 
 The **Recentering Transform (RCT)** :cite:p:`zanini2017transfer`
@@ -467,6 +471,8 @@ print(f"{'=' * 50}")
 
 refit_spdbn_karcher(underlying_model, X_target_shifted)
 
+target_karcher_mean = underlying_model.spdbnorm.running_mean.clone()
+
 rct_pred = clf.predict(target_shifted_ds)
 rct_bacc = balanced_accuracy_score(y_target_shifted, rct_pred)
 print(f"RCT Balanced Accuracy: {rct_bacc * 100:.2f}%")
@@ -476,29 +482,7 @@ print(f"Improvement over baseline: {(rct_bacc - no_adapt_bacc) * 100:+.2f}%")
 underlying_model.spdbnorm.running_mean.copy_(orig_running_mean)
 underlying_model.spdbnorm.running_var.copy_(orig_running_var)
 
-"""## Information Maximization (IM) Loss
-
-The IM loss (Eq. 21 in the paper) combines two complementary
-objectives:
-
-\begin{align}\mathcal{L}_{\mathrm{IM}} = \underbrace{\frac{1}{N}
-    \sum_{i=1}^{N} H(Y | X_i)}_{\mathcal{L}_{\mathrm{CEM}}}
-    - \underbrace{H(\bar{Y})}_{\mathcal{L}_{\mathrm{MEM}}}\end{align}
-
-- $\mathcal{L}_{\mathrm{CEM}}$ (Conditional Entropy
-  Minimization): encourages **confident** predictions.
-- $\mathcal{L}_{\mathrm{MEM}}$ (Marginal Entropy
-  Maximization): encourages **diverse** predictions across classes,
-  preventing collapse to a single class.
-
-A temperature of **T=2.0** is used for binary classification
-(T=0.8 for multi-class) to soften the softmax and improve
-gradient flow during adaptation.
-
-
-
-"""
-
+#%%
 def im_loss(logits, temperature=2.0):
     """Information Maximization loss (matching SPDIM paper)."""
     p = F.softmax(logits / temperature, dim=1)
@@ -507,6 +491,7 @@ def im_loss(logits, temperature=2.0):
     me = -(p_bar * torch.log(p_bar + 1e-5)).sum()
     return ce - me
 
+#%%
 """## SPDIM(bias) Strategy
 
 SPDIM(bias) (Eq. 19) learns a full SPD reference mean that replaces
@@ -532,20 +517,75 @@ print(f"{'=' * 50}")
 # Parameterize in log space: M = exp(S), initialized from Karcher mean
 with torch.no_grad():
     S_init = matrix_log.apply(target_karcher_mean.squeeze(0).unsqueeze(0))
-S_param = geoopt.ManifoldParameter(S_init, manifold=SymmetricPositiveDefinite())
-print(f"Log-space parameter S initialized. Shape: {S_param.shape}")
-optimizer_bias = RiemannianAdam([S_param], lr=0.01)
-n_epochs_bias = 50
+
+#%%
+
+from torch.nn.utils.parametrize import register_parametrization
+from spd_learn.modules.manifold import SymmetricPositiveDefinite
+
+from spd_learn.functional import (
+    airm_geodesic,
+    matrix_inv_sqrt,
+    matrix_sqrt,
+)
+from spd_learn.functional.batchnorm import (
+    karcher_mean_iteration,
+    spd_centering,
+    spd_rebiasing,
+    tangent_space_variance,
+)
+class SPDLearnableRecenter(torch.nn.Module):
+    def __init__(
+        self,
+        num_features,
+        device=None,
+        dtype=None,
+    ):
+        super().__init__()
+        self.num_features = num_features
+
+        self.bias = torch.nn.Parameter(
+            torch.empty(1, num_features, num_features, device=device, dtype=dtype),
+        )
+
+        self.reset_parameters()
+        register_parametrization(self, "bias", SymmetricPositiveDefinite())
+
+    @torch.no_grad()
+    def reset_parameters(self) -> None:
+        # Initialize bias to identity matrix (will become zeros in tangent space)
+        self.bias.zero_()
+        self.bias[0].fill_diagonal_(1.0)
+
+    def forward(self, input):
+        bias_inv_sqrt = matrix_inv_sqrt.apply(self.bias)
+        output = bias_inv_sqrt @ input @ bias_inv_sqrt
+        return output
+
+
+
+#%%
+
+X_spd_target = extract_spd_features(underlying_model, X_target_shifted, batch_size=32)
+
+#%%
+
+# S_param = geoopt.ManifoldParameter(S_init, manifold=SymmetricPositiveDefinite())
+print(f"Log-space parameter S initialized. Shape: {target_karcher_mean.shape}")
+
+adapter = SPDLearnableRecenter(target_karcher_mean.shape[-1])
+adapter.bias = target_karcher_mean.clone()
+
+optimizer_bias = torch.optim.Adam(adapter.parameters(), lr=0.05)
+n_epochs_bias = 200
 losses_bias = []
 best_loss_bias = float("inf")
-best_S = S_param.clone().detach()
+best_S = target_karcher_mean.clone().detach()
 for epoch in range(n_epochs_bias):
     optimizer_bias.zero_grad()
     # Ensure symmetry and map back to SPD manifold
-    S_sym = (S_param + S_param.transpose(-2, -1)) / 2
-    fm_mean = matrix_exp.apply(S_sym.unsqueeze(0)).squeeze(0)
     logits = spdim_forward(
-        underlying_model, X_spd_target, 1.0, fm_mean=fm_mean,
+        underlying_model, X_spd_target, adapter,
     )
     loss = im_loss(logits, temperature=2.0)
     loss.backward()
@@ -555,24 +595,23 @@ for epoch in range(n_epochs_bias):
     losses_bias.append(current_loss)
     if current_loss < best_loss_bias:
         best_loss_bias = current_loss
-        best_S = S_param.clone().detach()
+        best_S = adapter.bias.clone().detach()
 
     if (epoch + 1) % 10 == 0 or epoch == 0:
         print(f"  Epoch {epoch + 1:3d}/{n_epochs_bias}: loss={current_loss:.4f}")
 
 # Evaluate with best parameters
 with torch.no_grad():
-    S_sym = (best_S + best_S.transpose(-2, -1)) / 2
-    best_mean = matrix_exp.apply(S_sym.unsqueeze(0)).squeeze(0)
+    adapter.bias = best_S
     logits = spdim_forward(
-        underlying_model, X_spd_target, 1.0, fm_mean=best_mean,
+        underlying_model, X_spd_target, adapter,
     )
     y_pred_bias = logits.argmax(dim=1).cpu().numpy()
 
 bias_bacc = balanced_accuracy_score(y_target_shifted, y_pred_bias)
 print(f"\nSPDIM(bias) Balanced Accuracy: {bias_bacc * 100:.2f}%")
 print(f"Improvement over baseline: {(bias_bacc - no_adapt_bacc) * 100:+.2f}%")
-
+#%%
 """## Results Summary
 
 
