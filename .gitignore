@@ -64,6 +64,7 @@ cover
 # Visual Studio Code
 .vscode
 *.code-workspace
+AGENTS.md
 
 # Emacs
 *.py#
