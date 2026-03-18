@@ -1,5 +1,6 @@
 # Copyright (c) 2024-now SPD Learn Developers
 # SPDX-License-Identifier: BSD-3-Clause
+
 """Functional operations for SPD batch normalization.
 
 This module provides stateless mathematical operations for Riemannian batch
@@ -21,6 +22,8 @@ See Also
 :class:`~spd_learn.modules.SPDBatchNormMeanVar` : Full Riemannian batch normalization.
 """
 
+from typing import Tuple, Union
+
 import torch
 
 from .core import matrix_exp, matrix_log, matrix_sqrt_inv
@@ -30,7 +33,8 @@ def karcher_mean_iteration(
     X: torch.Tensor,
     current_mean: torch.Tensor,
     detach: bool = True,
-) -> torch.Tensor:
+    return_tangent: bool = False,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Perform one iteration of the Karcher mean algorithm.
 
     The Karcher (Fréchet) mean on the SPD manifold is the minimizer of the sum
@@ -54,11 +58,15 @@ def karcher_mean_iteration(
         If True, detaches ``current_mean`` from the computational graph before
         computing the update. Set to False when gradients with respect to the
         mean are needed.
+    return_tangent : bool, default=False
+        If True, also returns the mean tangent update used in this Karcher step.
 
     Returns
     -------
-    torch.Tensor
-        Updated Karcher mean estimate with shape `(1, ..., n, n)`.
+    torch.Tensor or Tuple[torch.Tensor, torch.Tensor]
+        Updated Karcher mean estimate with shape `(1, ..., n, n)`. When
+        ``return_tangent=True``, also returns the mean tangent update with the
+        same shape.
 
     Notes
     -----
@@ -85,6 +93,8 @@ def karcher_mean_iteration(
     mean_tangent = X_tangent.mean(dim=0, keepdim=True)
     # Map back to manifold
     new_mean = mean_sqrt @ matrix_exp.apply(mean_tangent) @ mean_sqrt
+    if return_tangent:
+        return new_mean, mean_tangent
     return new_mean
 
 

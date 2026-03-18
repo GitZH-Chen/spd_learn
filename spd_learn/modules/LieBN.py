@@ -128,8 +128,13 @@ class LieBNSPD(nn.Module):
         if self.metric == "AIM":
             batch = X_def.detach()
             mean = batch.mean(dim=0, keepdim=True)
-            for _ in range(self.karcher_steps):
-                mean = karcher_mean_iteration(batch, mean, detach=True)
+            for ith in range(self.karcher_steps):
+                mean, mean_tangent = karcher_mean_iteration(
+                    batch, mean, detach=True, return_tangent=True
+                )
+                condition = mean_tangent.norm(dim=(-1, -2))
+                if condition < 1e-5:
+                    break
             return mean
         return X_def.detach().mean(dim=0, keepdim=True)
 
