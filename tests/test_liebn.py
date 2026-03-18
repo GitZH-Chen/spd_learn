@@ -22,6 +22,9 @@ from spd_learn.functional.batchnorm import karcher_mean_iteration
 from spd_learn.modules import LieBNSPD
 
 
+torch.set_default_dtype(torch.float64)
+
+
 # ---------------------------------------------------------------------------
 # Data fixture
 # ---------------------------------------------------------------------------
@@ -32,7 +35,7 @@ def simulated_data():
     Strategy: zero-mean tangent vectors -> matrix_exp -> SPD at Identity,
     then apply linear mixing x = A z A^T so Frechet mean = A A^T.
     """
-    ndim = 4
+    ndim = 10
     nobs = 128
     generator = torch.Generator().manual_seed(42)
 
