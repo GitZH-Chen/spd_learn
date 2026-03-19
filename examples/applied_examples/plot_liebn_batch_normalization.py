@@ -78,6 +78,8 @@ import warnings
 import zipfile
 
 from collections import defaultdict
+import tempfile
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -91,7 +93,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from spd_learn.functional import ensure_sym
 from spd_learn.modules import (
     BiMap,
-    LieBNSPD,
+    SPDBatchNormLie,
     LogEig,
     ReEig,
     SPDBatchNormMeanVar,
@@ -128,7 +130,7 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
 ######################################################################
-# LieBNSPD Implementation
+# SPDBatchNormLie Implementation
 # -----------------------
 #
 # The reusable LieBN implementation now lives in ``spd_learn.modules`` and is
@@ -139,7 +141,7 @@ DATA_DIR.mkdir(exist_ok=True)
 # Sanity Check
 # ~~~~~~~~~~~~
 #
-# Verify that LieBNSPD produces valid SPD output and that gradients flow
+# Verify that SPDBatchNormLie produces valid SPD output and that gradients flow
 # for all three metrics.
 #
 
@@ -148,7 +150,7 @@ A = torch.randn(8, 4, 4)
 X_sanity = (A @ A.mT + 0.1 * torch.eye(4)).requires_grad_(True)
 
 for metric in ["AIM", "LEM", "LCM"]:
-    bn = LieBNSPD(4, metric=metric)
+    bn = SPDBatchNormLie(4, metric=metric)
     bn.train()
     out = bn(X_sanity)
     loss = (out * out).sum()
@@ -179,7 +181,7 @@ dataset_var = A_var @ A_var.mT + 1e-2 * torch.eye(n_var)
 
 variance_results = {}
 for metric in ["LEM", "LCM", "AIM"]:
-    bn = LieBNSPD(n_var, metric=metric, momentum=0.1)
+    bn = SPDBatchNormLie(n_var, metric=metric, momentum=0.1)
     bn.train()
     variances = []
     for epoch in range(n_epochs_var):
@@ -221,7 +223,7 @@ def make_bn(n, bn_type, bn_kwargs):
     if bn_type == "SPDBN":
         return SPDBatchNormMeanVar(n, momentum=bn_kwargs.get("momentum", 0.1))
     elif bn_type == "LieBN":
-        return LieBNSPD(n, **bn_kwargs)
+        return SPDBatchNormLie(n, **bn_kwargs)
     else:
         raise ValueError(f"Unknown bn_type: {bn_type}")
 
@@ -288,7 +290,10 @@ BATCH_SIZE = 30
 LR = 5e-3
 
 # Checkpoint file: per-run results saved as they complete.
-CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), "liebn_checkpoint.json")
+try:
+    CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), "liebn_checkpoint.json")
+except NameError:
+    CHECKPOINT_PATH = os.path.join(tempfile.gettempdir(), "liebn_checkpoint.json")
 
 
 def _load_checkpoint():
@@ -1110,7 +1115,10 @@ _print_table("AFEW", afew_methods, afew_results, paper_results["AFEW"])
 # Save results to JSON for reproducibility.
 #
 
-results_path = os.path.join(os.path.dirname(__file__), "liebn_table4_results.json")
+try:
+    results_path = os.path.join(os.path.dirname(__file__), "liebn_table4_results.json")
+except NameError:
+    results_path = os.path.join(tempfile.gettempdir(), "liebn_table4_results.json")
 results_to_save = {
     "radar": {k: dict(v) for k, v in radar_results.items()},
     "hdm05": {k: dict(v) for k, v in hdm05_results.items()},

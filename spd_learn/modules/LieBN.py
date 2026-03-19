@@ -3,7 +3,7 @@
 
 """Lie Group Batch Normalization for SPD matrices.
 
-This module implements LieBNSPD based on:
+This module implements SPDBatchNormLie based on:
 Ziheng Chen, Yue Song, Yunmei Liu, and Nicu Sebe,
 "A Lie Group Approach to Riemannian Batch Normalization," ICLR 2024.
 
@@ -27,7 +27,7 @@ from ..functional.batchnorm import karcher_mean_iteration
 from .manifold import PositiveDefiniteScalar, SymmetricPositiveDefinite
 
 
-class LieBNSPD(nn.Module):
+class SPDBatchNormLie(nn.Module):
     r"""Lie Group Batch Normalization for SPD matrices.
 
     This class implements the SPD instance of the LieBN framework, using
@@ -52,6 +52,10 @@ class LieBNSPD(nn.Module):
         Numerical stability constant for variance normalization.
     karcher_steps : int, default=1
         Number of Karcher flow iterations used by the AIM mean.
+    device : torch.device or str, optional
+        Device on which to create parameters and buffers.
+    dtype : torch.dtype, optional
+        Data type of parameters and buffers.
     """
 
     def __init__(
@@ -64,6 +68,8 @@ class LieBNSPD(nn.Module):
         momentum=0.1,
         eps=1e-5,
         karcher_steps=1,
+        device=None,
+        dtype=None,
     ):
         super().__init__()
         self.n = n
@@ -75,14 +81,24 @@ class LieBNSPD(nn.Module):
         self.eps = eps
         self.karcher_steps = karcher_steps
 
-        self.bias = nn.Parameter(torch.empty(1, n, n))
-        self.shift = nn.Parameter(torch.empty(()))
+        self.bias = nn.Parameter(
+            torch.empty(1, n, n, device=device, dtype=dtype)
+        )
+        self.shift = nn.Parameter(torch.empty((), device=device, dtype=dtype))
 
         if metric == "AIM":
-            self.register_buffer("running_mean", torch.eye(n).unsqueeze(0))
+            self.register_buffer(
+                "running_mean",
+                torch.eye(n, device=device, dtype=dtype).unsqueeze(0),
+            )
         else:
-            self.register_buffer("running_mean", torch.zeros(1, n, n))
-        self.register_buffer("running_var", torch.ones(()))
+            self.register_buffer(
+                "running_mean",
+                torch.zeros(1, n, n, device=device, dtype=dtype),
+            )
+        self.register_buffer(
+            "running_var", torch.ones((), device=device, dtype=dtype)
+        )
 
         self.reset_parameters()
         self._parametrize()
@@ -133,7 +149,7 @@ class LieBNSPD(nn.Module):
                     batch, mean, detach=True, return_tangent=True
                 )
                 condition = mean_tangent.norm(dim=(-1, -2))
-                if condition < 1e-5:
+                if condition.max() < 1e-5:
                     break
             return mean
         return X_def.detach().mean(dim=0, keepdim=True)
@@ -179,14 +195,15 @@ class LieBNSPD(nn.Module):
     def _update_running_stats(self, batch_mean, batch_var):
         with torch.no_grad():
             if self.metric == "AIM":
-                self.running_mean.copy_(
-                    airm_geodesic(self.running_mean, batch_mean, self.momentum)
+                self.running_mean = airm_geodesic(
+                    self.running_mean, batch_mean, self.momentum
                 )
             else:
-                self.running_mean.copy_(
-                    (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
+                self.running_mean = (
+                    (1 - self.momentum) * self.running_mean
+                    + self.momentum * batch_mean
                 )
-            self.running_var.copy_(
+            self.running_var = (
                 (1 - self.momentum) * self.running_var + self.momentum * batch_var
             )
 

@@ -54,7 +54,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from spd_learn.modules import (
     BiMap,
     CovLayer,
-    LieBNSPD,
+    SPDBatchNormLie,
     LogEig,
     ReEig,
     SPDBatchNormMeanVar,
@@ -98,7 +98,7 @@ RESULTS_PATH = Path("examples/applied_examples/liebn_tsmnet_results.json")
 # ---------------------------------------------
 #
 # We build a TSMNet model that supports no BN, SPDBatchNormMeanVar, or
-# LieBNSPD, matching the reference architecture:
+# SPDBatchNormLie, matching the reference architecture:
 #
 # ``Conv_temporal -> Conv_spatial -> CovLayer -> BiMap -> ReEig ->
 # [BN] -> LogEig -> Linear``
@@ -113,7 +113,7 @@ def make_bn_layer(n, bn_type, bn_kwargs):
     if bn_type == "SPDBN":
         return SPDBatchNormMeanVar(n, momentum=bn_kwargs.get("momentum", 0.1))
     elif bn_type == "LieBN":
-        return LieBNSPD(n, **bn_kwargs)
+        return SPDBatchNormLie(n, **bn_kwargs)
     else:
         raise ValueError(f"Unknown bn_type: {bn_type}")
 
@@ -323,7 +323,7 @@ def adapt_bn(model, X_target, batch_size=50):
     # Find BN layers
     bn_layers = []
     for module in model.modules():
-        if isinstance(module, (SPDBatchNormMeanVar, LieBNSPD)):
+        if isinstance(module, (SPDBatchNormMeanVar, SPDBatchNormLie)):
             bn_layers.append(module)
 
     if not bn_layers:
@@ -334,7 +334,7 @@ def adapt_bn(model, X_target, batch_size=50):
     for layer in bn_layers:
         if isinstance(layer, SPDBatchNormMeanVar):
             layer.reset_running_stats()
-        elif isinstance(layer, LieBNSPD):
+        elif isinstance(layer, SPDBatchNormLie):
             if layer.metric == "AIM":
                 layer.running_mean.copy_(torch.eye(layer.n).unsqueeze(0))
             else:
