@@ -13,8 +13,12 @@ karcher_mean_iteration
     Single iteration of the Karcher (Fréchet) mean algorithm.
 spd_centering
     Center SPD matrices around a given mean via congruence transformation.
+spd_cholesky_congruence
+    Congruence transformation using the Cholesky factor of an SPD matrix.
 tangent_space_variance
     Compute variance of SPD matrices in the tangent space.
+lie_group_variance
+    Fréchet variance under a Lie group structure on the SPD manifold.
 
 See Also
 --------
@@ -27,6 +31,7 @@ from typing import Tuple, Union
 import torch
 
 from .core import matrix_exp, matrix_log, matrix_sqrt_inv
+from .utils import ensure_sym
 
 
 def karcher_mean_iteration(
@@ -255,8 +260,6 @@ def spd_cholesky_congruence(
     --------
     :func:`spd_centering` : Eigendecomposition-based centering (uses :math:`M^{-1/2}`).
     """
-    from .utils import ensure_sym
-
     L = torch.linalg.cholesky(P)
     if inverse:
         Y = torch.linalg.solve_triangular(L, X, upper=False)
@@ -314,23 +317,24 @@ def lie_group_variance(
     :func:`tangent_space_variance` : Unweighted tangent-space dispersion used
         by :class:`~spd_learn.modules.SPDBatchNormMeanVar`.
     """
-    X = X_centered.detach()
     if metric == "AIM":
-        logX = matrix_log.apply(X)
+        logX = matrix_log.apply(X_centered)
         frob_sq = (logX * logX).sum(dim=(-2, -1))
         dists = alpha * frob_sq
         if beta != 0:
-            dists = dists + beta * torch.logdet(X).square()
+            dists = dists + beta * torch.logdet(X_centered).square()
         return dists.mean() / (theta**2)
 
-    frob_sq = (X * X).sum(dim=(-2, -1))
+    frob_sq = (X_centered * X_centered).sum(dim=(-2, -1))
     dists = alpha * frob_sq
     if beta != 0:
-        trace = X.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+        trace = X_centered.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
         dists = dists + beta * trace.square()
     var = dists.mean()
     if metric == "LCM":
         var = var / (theta**2)
+    elif metric != "LEM":
+        raise ValueError(f"metric must be 'AIM', 'LEM', or 'LCM', got '{metric}'")
     return var
 
 

@@ -64,7 +64,8 @@ class SPDBatchNormLie(nn.Module):
     eps : float, default=1e-5
         Numerical stability constant for variance normalization.
     karcher_steps : int, default=1
-        Number of Karcher flow iterations used by the AIM mean.
+        Number of Karcher flow iterations used by the AIM mean.  Iterations
+        stop early when the tangent update norm falls below ``1e-5``.
     congruence : {"cholesky", "eig"}, default="cholesky"
         Implementation of the AIM congruence action (centering/biasing).
         ``"cholesky"`` uses the Cholesky factor :math:`L` of :math:`P` to
@@ -96,6 +97,11 @@ class SPDBatchNormLie(nn.Module):
         dtype=None,
     ):
         super().__init__()
+        supported_metrics = ("AIM", "LEM", "LCM")
+        if metric not in supported_metrics:
+            raise ValueError(
+                f"metric must be one of {supported_metrics}, got '{metric}'"
+            )
         if congruence not in ("cholesky", "eig"):
             raise ValueError(
                 f"congruence must be 'cholesky' or 'eig', got '{congruence}'"
@@ -221,7 +227,11 @@ class SPDBatchNormLie(nn.Module):
             X_centered = self._translate(X_def, batch_mean, inverse=True)
             if X.shape[0] > 1:
                 batch_var = lie_group_variance(
-                    X_centered, self.metric, self.alpha, self.beta, self.theta
+                    X_centered.detach(),
+                    self.metric,
+                    self.alpha,
+                    self.beta,
+                    self.theta,
                 )
                 X_scaled = self._scale(X_centered, batch_var)
             else:
@@ -238,5 +248,6 @@ class SPDBatchNormLie(nn.Module):
     def extra_repr(self):
         return (
             f"n={self.n}, metric={self.metric}, theta={self.theta}, "
-            f"alpha={self.alpha}, beta={self.beta}, momentum={self.momentum}"
+            f"alpha={self.alpha}, beta={self.beta}, momentum={self.momentum}, "
+            f"congruence={self.congruence}"
         )

@@ -22,7 +22,13 @@ from spd_learn.functional.batchnorm import karcher_mean_iteration
 from spd_learn.modules import SPDBatchNormLie
 
 
-torch.set_default_dtype(torch.float64)
+@pytest.fixture(autouse=True)
+def _use_float64():
+    """Use float64 for all tests in this module, restoring the default after."""
+    prev = torch.get_default_dtype()
+    torch.set_default_dtype(torch.float64)
+    yield
+    torch.set_default_dtype(prev)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +68,7 @@ def simulated_data():
 # ---------------------------------------------------------------------------
 
 METRICS = ["AIM", "LEM", "LCM"]
+CONGRUENCES = ["cholesky", "eig"]
 
 
 @pytest.mark.parametrize(
@@ -83,15 +90,18 @@ def test_deform_inv_deform_roundtrip(simulated_data, metric, theta, atol):
     assert torch.allclose(X_recovered, x, atol=atol, rtol=0.0)
 
 
+@pytest.mark.parametrize("congruence", CONGRUENCES)
 @pytest.mark.parametrize("metric", METRICS)
-def test_post_normalization_mean(simulated_data, metric):
+def test_post_normalization_mean(simulated_data, metric, congruence):
     """After LieBN forward (bias=I, shift=1), codomain mean should be neutral.
 
     - AIM: Karcher mean of output ≈ Identity
     - LEM/LCM: arithmetic mean of deformed output ≈ zero matrix
     """
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=64)
+    layer = SPDBatchNormLie(
+        ndim, metric=metric, karcher_steps=64, congruence=congruence
+    )
     layer.train()
 
     with torch.no_grad():
