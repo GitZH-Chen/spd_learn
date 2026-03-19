@@ -110,9 +110,7 @@ class SPDBatchNormLie(nn.Module):
         self.karcher_steps = karcher_steps
         self.congruence = congruence
 
-        self.bias = nn.Parameter(
-            torch.empty(1, n, n, device=device, dtype=dtype)
-        )
+        self.bias = nn.Parameter(torch.empty(1, n, n, device=device, dtype=dtype))
         self.shift = nn.Parameter(torch.empty((), device=device, dtype=dtype))
 
         if metric == "AIM":
@@ -125,9 +123,7 @@ class SPDBatchNormLie(nn.Module):
                 "running_mean",
                 torch.zeros(1, n, n, device=device, dtype=dtype),
             )
-        self.register_buffer(
-            "running_var", torch.ones((), device=device, dtype=dtype)
-        )
+        self.register_buffer("running_var", torch.ones((), device=device, dtype=dtype))
 
         self.reset_parameters()
         self._parametrize()
@@ -210,12 +206,11 @@ class SPDBatchNormLie(nn.Module):
                 )
             else:
                 self.running_mean = (
-                    (1 - self.momentum) * self.running_mean
-                    + self.momentum * batch_mean
-                )
+                    1 - self.momentum
+                ) * self.running_mean + self.momentum * batch_mean
             self.running_var = (
-                (1 - self.momentum) * self.running_var + self.momentum * batch_var
-            )
+                1 - self.momentum
+            ) * self.running_var + self.momentum * batch_var
 
     def forward(self, X):
         X_def = self._deform(X)
