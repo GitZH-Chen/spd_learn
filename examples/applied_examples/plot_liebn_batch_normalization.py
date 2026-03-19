@@ -72,14 +72,13 @@ import json
 import os
 import random
 import tarfile
+import tempfile
 import time
 import urllib.request
 import warnings
 import zipfile
 
 from collections import defaultdict
-import tempfile
-
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -93,9 +92,9 @@ from torch.utils.data import DataLoader, TensorDataset
 from spd_learn.functional import ensure_sym
 from spd_learn.modules import (
     BiMap,
-    SPDBatchNormLie,
     LogEig,
     ReEig,
+    SPDBatchNormLie,
     SPDBatchNormMeanVar,
 )
 

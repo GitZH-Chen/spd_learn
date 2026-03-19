@@ -54,9 +54,9 @@ from torch.utils.data import DataLoader, TensorDataset
 from spd_learn.modules import (
     BiMap,
     CovLayer,
-    SPDBatchNormLie,
     LogEig,
     ReEig,
+    SPDBatchNormLie,
     SPDBatchNormMeanVar,
 )
 

@@ -32,7 +32,11 @@ from ..functional.batchnorm import (
     spd_cholesky_congruence,
     spd_rebiasing,
 )
-from ..functional.metrics import cholesky_exp, cholesky_log, log_euclidean_scalar_multiply
+from ..functional.metrics import (
+    cholesky_exp,
+    cholesky_log,
+    log_euclidean_scalar_multiply,
+)
 from .manifold import PositiveDefiniteScalar, SymmetricPositiveDefinite
 
 
