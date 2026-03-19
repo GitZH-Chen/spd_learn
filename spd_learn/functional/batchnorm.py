@@ -219,9 +219,126 @@ def tangent_space_variance(
     return variance
 
 
+def spd_cholesky_congruence(
+    X: torch.Tensor,
+    P: torch.Tensor,
+    inverse: bool = False,
+) -> torch.Tensor:
+    r"""Congruence transformation using the Cholesky factor of an SPD matrix.
+
+    Given an SPD matrix :math:`P = LL^T`, applies:
+
+    .. math::
+
+        \text{forward: } Y = LXL^T, \qquad
+        \text{inverse: } Y = L^{-1}X L^{-T}
+
+    This implements the Lie group action of ``GL(n)`` on the SPD manifold and
+    is used for centering and biasing under the affine-invariant metric.
+
+    Parameters
+    ----------
+    X : torch.Tensor
+        Batch of SPD matrices with shape `(..., n, n)`.
+    P : torch.Tensor
+        SPD matrix whose Cholesky factor defines the transformation,
+        with shape broadcastable to ``X``.
+    inverse : bool, default=False
+        If True, applies the inverse congruence :math:`L^{-1}X L^{-T}`.
+
+    Returns
+    -------
+    torch.Tensor
+        Transformed SPD matrices with the same shape as ``X``.
+
+    See Also
+    --------
+    :func:`spd_centering` : Eigendecomposition-based centering (uses :math:`M^{-1/2}`).
+    """
+    from .utils import ensure_sym
+
+    L = torch.linalg.cholesky(P)
+    if inverse:
+        Y = torch.linalg.solve_triangular(L, X, upper=False)
+        return ensure_sym(torch.linalg.solve_triangular(L, Y.mT, upper=False).mT)
+    return ensure_sym(L @ X @ L.mT)
+
+
+def lie_group_variance(
+    X_centered: torch.Tensor,
+    metric: str,
+    alpha: float = 1.0,
+    beta: float = 0.0,
+    theta: float = 1.0,
+) -> torch.Tensor:
+    r"""Fréchet variance under a Lie group structure on the SPD manifold.
+
+    Computes the scalar dispersion of centered data in the Lie algebra,
+    using the bi-invariant distance of Chen et al. :cite:p:`chen2024liebn`:
+
+    .. math::
+
+        \sigma^2 = \frac{1}{N} \sum_i
+        \bigl(\alpha \lVert V_i \rVert_F^2 + \beta \, g(V_i)^2\bigr)
+        \;/\; \theta^2
+
+    where the auxiliary term :math:`g` depends on the metric:
+
+    - **AIM**: :math:`V_i = \log(X_i)`, :math:`g(V) = \log\det(X)`
+    - **LEM**: :math:`V_i = X_i` (already in log space), :math:`g(V) = \operatorname{tr}(V)`,
+      no :math:`\theta` scaling
+    - **LCM**: same as LEM but with :math:`\theta` scaling
+
+    Parameters
+    ----------
+    X_centered : torch.Tensor
+        Centered data in the Lie algebra with shape `(batch_size, ..., n, n)`.
+        For AIM these are SPD matrices (centered around identity); for LEM/LCM
+        these are symmetric / lower-triangular matrices.
+    metric : {"AIM", "LEM", "LCM"}
+        Lie group structure.
+    alpha : float, default=1.0
+        Frobenius-norm weight.
+    beta : float, default=0.0
+        Trace / log-determinant weight.
+    theta : float, default=1.0
+        Power deformation parameter.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar variance (0-d tensor).
+
+    See Also
+    --------
+    :func:`tangent_space_variance` : Unweighted tangent-space dispersion used
+        by :class:`~spd_learn.modules.SPDBatchNormMeanVar`.
+    """
+    X = X_centered.detach()
+    if metric == "AIM":
+        logX = matrix_log.apply(X)
+        frob_sq = (logX * logX).sum(dim=(-2, -1))
+        dists = alpha * frob_sq
+        if beta != 0:
+            dists = dists + beta * torch.logdet(X).square()
+        return dists.mean() / (theta**2)
+
+    frob_sq = (X * X).sum(dim=(-2, -1))
+    dists = alpha * frob_sq
+    if beta != 0:
+        trace = X.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
+        dists = dists + beta * trace.square()
+    var = dists.mean()
+    if metric == "LCM":
+        var = var / (theta**2)
+    return var
+
+
 __all__ = [
     "karcher_mean_iteration",
+    "lie_group_variance",
     "spd_centering",
+    "spd_cholesky_congruence",
     "spd_rebiasing",
     "tangent_space_variance",
 ]

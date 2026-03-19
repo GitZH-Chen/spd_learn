@@ -23,7 +23,12 @@ from ..functional import (
     matrix_log,
     matrix_power,
 )
-from ..functional.batchnorm import karcher_mean_iteration
+from ..functional.batchnorm import (
+    karcher_mean_iteration,
+    lie_group_variance,
+    spd_cholesky_congruence,
+)
+from ..functional.metrics import cholesky_exp, cholesky_log, log_euclidean_scalar_multiply
 from .manifold import PositiveDefiniteScalar, SymmetricPositiveDefinite
 
 
@@ -113,84 +118,60 @@ class SPDBatchNormLie(nn.Module):
         register_parametrization(self, "bias", SymmetricPositiveDefinite())
         register_parametrization(self, "shift", PositiveDefiniteScalar())
 
+    # ------------------------------------------------------------------
+    # Thin dispatch helpers — each delegates to existing functional ops.
+    # ------------------------------------------------------------------
+
     def _deform(self, X):
+        """Map SPD matrices to the Lie algebra."""
         if self.metric == "AIM":
             return X if self.theta == 1.0 else matrix_power.apply(X, self.theta)
         if self.metric == "LEM":
             return matrix_log.apply(X)
-        if self.metric == "LCM":
-            Xp = X if self.theta == 1.0 else matrix_power.apply(X, self.theta)
-            L = torch.linalg.cholesky(Xp)
-            diag = torch.diag_embed(torch.log(torch.diagonal(L, dim1=-2, dim2=-1)))
-            return L.tril(-1) + diag
-        raise ValueError(f"Unsupported LieBN metric: {self.metric}")
+        # LCM
+        Xp = X if self.theta == 1.0 else matrix_power.apply(X, self.theta)
+        return cholesky_log.apply(Xp)
 
     def _inv_deform(self, S):
+        """Map from the Lie algebra back to SPD matrices."""
         if self.metric == "AIM":
             return S if self.theta == 1.0 else matrix_power.apply(S, 1.0 / self.theta)
         if self.metric == "LEM":
             return matrix_exp.apply(S)
-        if self.metric == "LCM":
-            L = S.tril(-1) + torch.diag_embed(
-                torch.exp(torch.diagonal(S, dim1=-2, dim2=-1))
-            )
-            spd = ensure_sym(L @ L.mT)
-            return (
-                spd if self.theta == 1.0 else matrix_power.apply(spd, 1.0 / self.theta)
-            )
-        raise ValueError(f"Unsupported LieBN metric: {self.metric}")
+        # LCM
+        spd = ensure_sym(cholesky_exp.apply(S))
+        return spd if self.theta == 1.0 else matrix_power.apply(spd, 1.0 / self.theta)
+
+    def _translate(self, X, P, inverse=False):
+        """Group translation (centering / biasing) in the Lie algebra."""
+        if self.metric == "AIM":
+            return spd_cholesky_congruence(X, P, inverse=inverse)
+        return X - P if inverse else X + P
 
     def _frechet_mean(self, X_def):
+        """Fréchet mean in the deformed space."""
         if self.metric == "AIM":
             batch = X_def.detach()
             mean = batch.mean(dim=0, keepdim=True)
-            for ith in range(self.karcher_steps):
+            for _ in range(self.karcher_steps):
                 mean, mean_tangent = karcher_mean_iteration(
                     batch, mean, detach=True, return_tangent=True
                 )
-                condition = mean_tangent.norm(dim=(-1, -2))
-                if condition.max() < 1e-5:
+                if mean_tangent.norm(dim=(-1, -2)).max() < 1e-5:
                     break
             return mean
         return X_def.detach().mean(dim=0, keepdim=True)
 
-    def _translate(self, X, P, inverse=False):
-        if self.metric == "AIM":
-            # Cholesky-based congruence is the group action for AIM.
-            L = torch.linalg.cholesky(P)
-            if inverse:
-                Y = torch.linalg.solve_triangular(L, X, upper=False)
-                result = torch.linalg.solve_triangular(L, Y.mT, upper=False).mT
-                return ensure_sym(result)
-            return ensure_sym(L @ X @ L.mT)
-        return X - P if inverse else X + P
-
-    def _frechet_variance(self, X_centered):
-        X = X_centered.detach()
-        if self.metric == "AIM":
-            logX = matrix_log.apply(X)
-            frob_sq = (logX * logX).sum(dim=(-2, -1))
-            dists = self.alpha * frob_sq
-            if self.beta != 0:
-                dists = dists + self.beta * torch.logdet(X).square()
-            return dists.mean() / (self.theta**2)
-
-        frob_sq = (X * X).sum(dim=(-2, -1))
-        dists = self.alpha * frob_sq
-        if self.beta != 0:
-            trace = X.diagonal(dim1=-2, dim2=-1).sum(dim=-1)
-            dists = dists + self.beta * trace.square()
-        var = dists.mean()
-        if self.metric == "LCM":
-            var = var / (self.theta**2)
-        return var
-
     def _scale(self, X, var):
+        """Variance normalization in the Lie algebra."""
         factor = self.shift / (var + self.eps).sqrt()
         if self.metric == "AIM":
-            # Keep gradients through the learnable scalar factor.
-            return matrix_exp.apply(factor * matrix_log.apply(X))
+            return log_euclidean_scalar_multiply(factor, X)
         return X * factor
+
+    # ------------------------------------------------------------------
+    # Running statistics & forward
+    # ------------------------------------------------------------------
 
     def _update_running_stats(self, batch_mean, batch_var):
         with torch.no_grad():
@@ -215,7 +196,9 @@ class SPDBatchNormLie(nn.Module):
             batch_mean = self._frechet_mean(X_def)
             X_centered = self._translate(X_def, batch_mean, inverse=True)
             if X.shape[0] > 1:
-                batch_var = self._frechet_variance(X_centered)
+                batch_var = lie_group_variance(
+                    X_centered, self.metric, self.alpha, self.beta, self.theta
+                )
                 X_scaled = self._scale(X_centered, batch_var)
             else:
                 batch_var = self.running_var.clone()

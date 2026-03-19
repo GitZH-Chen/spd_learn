@@ -17,7 +17,9 @@ matrices, organized into:
 from .autograd import modeig_backward, modeig_forward
 from .batchnorm import (
     karcher_mean_iteration,
+    lie_group_variance,
     spd_centering,
+    spd_cholesky_congruence,
     spd_rebiasing,
     tangent_space_variance,
 )
@@ -156,7 +158,9 @@ __all__ = [
     "shrinkage_covariance",
     # Batch normalization
     "karcher_mean_iteration",
+    "lie_group_variance",
     "spd_centering",
+    "spd_cholesky_congruence",
     "spd_rebiasing",
     "tangent_space_variance",
     # Bilinear operations
