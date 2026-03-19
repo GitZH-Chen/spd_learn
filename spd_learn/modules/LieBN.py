@@ -20,13 +20,17 @@ from ..functional import (
     airm_geodesic,
     ensure_sym,
     matrix_exp,
+    matrix_inv_sqrt,
     matrix_log,
     matrix_power,
+    matrix_sqrt,
 )
 from ..functional.batchnorm import (
     karcher_mean_iteration,
     lie_group_variance,
+    spd_centering,
     spd_cholesky_congruence,
+    spd_rebiasing,
 )
 from ..functional.metrics import cholesky_exp, cholesky_log, log_euclidean_scalar_multiply
 from .manifold import PositiveDefiniteScalar, SymmetricPositiveDefinite
@@ -57,6 +61,16 @@ class SPDBatchNormLie(nn.Module):
         Numerical stability constant for variance normalization.
     karcher_steps : int, default=1
         Number of Karcher flow iterations used by the AIM mean.
+    congruence : {"cholesky", "eig"}, default="cholesky"
+        Implementation of the AIM congruence action (centering/biasing).
+        ``"cholesky"`` uses the Cholesky factor :math:`L` of :math:`P` to
+        compute :math:`L X L^T` (as in the original LieBN paper).
+        ``"eig"`` uses eigendecomposition-based :math:`M^{-1/2} X M^{-1/2}`
+        (matching :func:`~spd_learn.functional.spd_centering`).
+        Both are mathematically equivalent; Cholesky is typically faster,
+        while eigendecomposition reuses the infrastructure of
+        :class:`~spd_learn.modules.SPDBatchNormMeanVar`.
+        Only affects the AIM metric.
     device : torch.device or str, optional
         Device on which to create parameters and buffers.
     dtype : torch.dtype, optional
@@ -73,10 +87,15 @@ class SPDBatchNormLie(nn.Module):
         momentum=0.1,
         eps=1e-5,
         karcher_steps=1,
+        congruence="cholesky",
         device=None,
         dtype=None,
     ):
         super().__init__()
+        if congruence not in ("cholesky", "eig"):
+            raise ValueError(
+                f"congruence must be 'cholesky' or 'eig', got '{congruence}'"
+            )
         self.n = n
         self.metric = metric
         self.theta = theta
@@ -85,6 +104,7 @@ class SPDBatchNormLie(nn.Module):
         self.momentum = momentum
         self.eps = eps
         self.karcher_steps = karcher_steps
+        self.congruence = congruence
 
         self.bias = nn.Parameter(
             torch.empty(1, n, n, device=device, dtype=dtype)
@@ -145,7 +165,12 @@ class SPDBatchNormLie(nn.Module):
     def _translate(self, X, P, inverse=False):
         """Group translation (centering / biasing) in the Lie algebra."""
         if self.metric == "AIM":
-            return spd_cholesky_congruence(X, P, inverse=inverse)
+            if self.congruence == "cholesky":
+                return spd_cholesky_congruence(X, P, inverse=inverse)
+            # Eigendecomposition path
+            if inverse:
+                return spd_centering(X, matrix_inv_sqrt.apply(P))
+            return spd_rebiasing(X, matrix_sqrt.apply(P))
         return X - P if inverse else X + P
 
     def _frechet_mean(self, X_def):
