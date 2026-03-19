@@ -21,19 +21,13 @@ from spd_learn.functional import (
 from spd_learn.functional.batchnorm import karcher_mean_iteration
 from spd_learn.modules import SPDBatchNormLie
 
-
-@pytest.fixture(autouse=True)
-def _use_float64():
-    """Use float64 for all tests in this module, restoring the default after."""
-    prev = torch.get_default_dtype()
-    torch.set_default_dtype(torch.float64)
-    yield
-    torch.set_default_dtype(prev)
-
+DTYPE = torch.float64
 
 # ---------------------------------------------------------------------------
 # Data fixture
 # ---------------------------------------------------------------------------
+
+
 @pytest.fixture()
 def simulated_data():
     """Generate SPD data with known Frechet mean for testing.
@@ -46,15 +40,17 @@ def simulated_data():
     generator = torch.Generator().manual_seed(42)
 
     # Zero-mean tangent vectors -> SPD matrices centered at Identity
-    logz = vec_to_sym(torch.randn((nobs, ndim * (ndim + 1) // 2), generator=generator))
+    logz = vec_to_sym(
+        torch.randn((nobs, ndim * (ndim + 1) // 2), generator=generator, dtype=DTYPE)
+    )
     logz = logz - logz.mean(dim=0, keepdim=True)
     z = matrix_exp.apply(logz)
 
     # Linear mixing model: shifts Frechet mean to A @ A^T
     eps = 0.1
-    forward_model = (torch.rand((ndim, ndim), generator=generator) - 0.5) * (
-        1 - eps
-    ) + eps * torch.eye(ndim)
+    forward_model = (
+        torch.rand((ndim, ndim), generator=generator, dtype=DTYPE) - 0.5
+    ) * (1 - eps) + eps * torch.eye(ndim, dtype=DTYPE)
     x = forward_model @ z @ forward_model.mT
 
     # Analytic Frechet mean (by invariance)
@@ -82,7 +78,7 @@ CONGRUENCES = ["cholesky", "eig"]
 def test_deform_inv_deform_roundtrip(simulated_data, metric, theta, atol):
     """_inv_deform(_deform(X)) should recover X."""
     x, _, ndim, _ = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, theta=theta)
+    layer = SPDBatchNormLie(ndim, metric=metric, theta=theta, dtype=DTYPE)
 
     X_def = layer._deform(x)
     X_recovered = layer._inv_deform(X_def)
@@ -100,7 +96,7 @@ def test_post_normalization_mean(simulated_data, metric, congruence):
     """
     x, _, ndim, nobs = simulated_data
     layer = SPDBatchNormLie(
-        ndim, metric=metric, karcher_steps=64, congruence=congruence
+        ndim, metric=metric, karcher_steps=64, congruence=congruence, dtype=DTYPE
     )
     layer.train()
 
@@ -114,7 +110,7 @@ def test_post_normalization_mean(simulated_data, metric, congruence):
         mean = output.mean(dim=0, keepdim=True)
         for _ in range(64):
             mean = karcher_mean_iteration(output, mean, detach=True)
-        identity = torch.eye(ndim).unsqueeze(0)
+        identity = torch.eye(ndim, dtype=DTYPE).unsqueeze(0)
         assert torch.allclose(mean, identity, atol=tol, rtol=0.0), (
             f"AIM: Karcher mean of output deviates from Identity by "
             f"{(mean - identity).abs().max().item():.6f}"
@@ -138,7 +134,7 @@ def test_post_normalization_variance(simulated_data, metric):
     this is close to 1.0.
     """
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=64)
+    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=64, dtype=DTYPE)
     layer.train()
 
     with torch.no_grad():
@@ -173,7 +169,9 @@ def test_post_normalization_variance(simulated_data, metric):
 def test_running_stats_single_batch(simulated_data, metric):
     """With momentum=1.0, running stats should match batch stats exactly."""
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, momentum=1.0, karcher_steps=64)
+    layer = SPDBatchNormLie(
+        ndim, metric=metric, momentum=1.0, karcher_steps=64, dtype=DTYPE
+    )
     layer.train()
 
     with torch.no_grad():
@@ -217,11 +215,13 @@ def test_running_stats_single_batch(simulated_data, metric):
 def test_running_stats_convergence(simulated_data, metric):
     """Running stats should converge to population stats over mini-batches."""
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1)
+    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1, dtype=DTYPE)
 
     # Full-batch reference statistics (high precision)
     with torch.no_grad():
-        ref_layer = SPDBatchNormLie(ndim, metric=metric, momentum=1.0, karcher_steps=64)
+        ref_layer = SPDBatchNormLie(
+            ndim, metric=metric, momentum=1.0, karcher_steps=64, dtype=DTYPE
+        )
         ref_layer.train()
         ref_layer(x)
         ref_mean = ref_layer.running_mean.clone()
@@ -257,7 +257,7 @@ def test_gradient_flow(simulated_data, metric):
     # Use a small batch to keep computation fast
     x_small = x[:8].clone().requires_grad_(True)
 
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1)
+    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1, dtype=DTYPE)
     layer.train()
 
     output = layer(x_small)
@@ -283,16 +283,16 @@ def test_gradient_flow(simulated_data, metric):
 def test_default_initialization(metric):
     """Verify default parameter initialization."""
     ndim = 4
-    layer = SPDBatchNormLie(ndim, metric=metric)
+    layer = SPDBatchNormLie(ndim, metric=metric, dtype=DTYPE)
 
     # Bias should be Identity
-    identity = torch.eye(ndim).unsqueeze(0)
+    identity = torch.eye(ndim, dtype=DTYPE).unsqueeze(0)
     assert torch.allclose(layer.bias, identity, atol=1e-10), (
         f"{metric}: bias not initialized to Identity"
     )
 
     # Shift should be 1.0
-    assert torch.allclose(layer.shift, torch.ones(()), atol=1e-10), (
+    assert torch.allclose(layer.shift, torch.ones((), dtype=DTYPE), atol=1e-10), (
         f"{metric}: shift not initialized to 1.0"
     )
 
@@ -301,8 +301,14 @@ def test_default_initialization(metric):
         assert torch.allclose(layer.running_mean, identity, atol=1e-10)
     else:
         assert torch.allclose(
-            layer.running_mean, torch.zeros(1, ndim, ndim), atol=1e-10
+            layer.running_mean, torch.zeros(1, ndim, ndim, dtype=DTYPE), atol=1e-10
         )
 
     # Running var should be 1.0
-    assert torch.allclose(layer.running_var, torch.ones(()), atol=1e-10)
+    assert torch.allclose(layer.running_var, torch.ones((), dtype=DTYPE), atol=1e-10)
+
+    # Verify dtype propagated correctly
+    assert layer.bias.dtype == DTYPE
+    assert layer.shift.dtype == DTYPE
+    assert layer.running_mean.dtype == DTYPE
+    assert layer.running_var.dtype == DTYPE
