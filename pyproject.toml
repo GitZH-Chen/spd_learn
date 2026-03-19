@@ -77,7 +77,6 @@ brain = [
     'nilearn',
     'pyriemann',
     'skada',
-    'geoopt',
 ]
 dev = [
     'spd_learn[tests]',
