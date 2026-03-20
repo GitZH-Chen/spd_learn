@@ -21,6 +21,7 @@ from spd_learn.functional import (
 from spd_learn.functional.batchnorm import karcher_mean_iteration
 from spd_learn.modules import SPDBatchNormLie
 
+
 DTYPE = torch.float64
 
 # ---------------------------------------------------------------------------
