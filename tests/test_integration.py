@@ -21,7 +21,7 @@ mandatory_parameters_per_module = {
     "SPDBatchNormMean": dict(num_features=10),
     "BatchReNorm": dict(num_features=10),
     "SPDBatchNormMeanVar": dict(num_features=10),
-    "SPDBatchNormLie": dict(n=10),
+    "SPDBatchNormLie": dict(num_features=10),
     "PatchEmbeddingLayer": dict(n_chans=10, n_patches=2),
     "BiMapIncreaseDim": dict(in_features=10, out_features=20),
     "Shrinkage": dict(n_chans=10),
