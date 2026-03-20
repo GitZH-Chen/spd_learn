@@ -97,7 +97,7 @@ def test_post_normalization_mean(simulated_data, metric, congruence):
     """
     x, _, ndim, nobs = simulated_data
     layer = SPDBatchNormLie(
-        ndim, metric=metric, karcher_steps=64, congruence=congruence, dtype=DTYPE
+        ndim, metric=metric, n_iter=64, congruence=congruence, dtype=DTYPE
     )
     layer.train()
 
@@ -135,7 +135,7 @@ def test_post_normalization_variance(simulated_data, metric):
     this is close to 1.0.
     """
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=64, dtype=DTYPE)
+    layer = SPDBatchNormLie(ndim, metric=metric, n_iter=64, dtype=DTYPE)
     layer.train()
 
     with torch.no_grad():
@@ -170,9 +170,7 @@ def test_post_normalization_variance(simulated_data, metric):
 def test_running_stats_single_batch(simulated_data, metric):
     """With momentum=1.0, running stats should match batch stats exactly."""
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(
-        ndim, metric=metric, momentum=1.0, karcher_steps=64, dtype=DTYPE
-    )
+    layer = SPDBatchNormLie(ndim, metric=metric, momentum=1.0, n_iter=64, dtype=DTYPE)
     layer.train()
 
     with torch.no_grad():
@@ -216,12 +214,12 @@ def test_running_stats_single_batch(simulated_data, metric):
 def test_running_stats_convergence(simulated_data, metric):
     """Running stats should converge to population stats over mini-batches."""
     x, _, ndim, nobs = simulated_data
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1, dtype=DTYPE)
+    layer = SPDBatchNormLie(ndim, metric=metric, n_iter=1, dtype=DTYPE)
 
     # Full-batch reference statistics (high precision)
     with torch.no_grad():
         ref_layer = SPDBatchNormLie(
-            ndim, metric=metric, momentum=1.0, karcher_steps=64, dtype=DTYPE
+            ndim, metric=metric, momentum=1.0, n_iter=64, dtype=DTYPE
         )
         ref_layer.train()
         ref_layer(x)
@@ -258,7 +256,7 @@ def test_gradient_flow(simulated_data, metric):
     # Use a small batch to keep computation fast
     x_small = x[:8].clone().requires_grad_(True)
 
-    layer = SPDBatchNormLie(ndim, metric=metric, karcher_steps=1, dtype=DTYPE)
+    layer = SPDBatchNormLie(ndim, metric=metric, n_iter=1, dtype=DTYPE)
     layer.train()
 
     output = layer(x_small)

@@ -9,6 +9,8 @@ used by the batch normalization modules.
 
 Functions
 ---------
+frechet_mean
+    Fréchet mean of SPD matrices under the AIRM via Karcher flow.
 karcher_mean_iteration
     Single iteration of the Karcher (Fréchet) mean algorithm.
 spd_centering
@@ -26,7 +28,7 @@ See Also
 :class:`~spd_learn.modules.SPDBatchNormMeanVar` : Full Riemannian batch normalization.
 """
 
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -101,6 +103,80 @@ def karcher_mean_iteration(
     if return_tangent:
         return new_mean, mean_tangent
     return new_mean
+
+
+def frechet_mean(
+    X: torch.Tensor,
+    max_iter: int = 1,
+    weights: Optional[torch.Tensor] = None,
+    return_distances: bool = False,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    r"""Fréchet mean of SPD matrices under the AIRM via Karcher flow.
+
+    Computes the minimizer of the sum of squared geodesic distances:
+
+    .. math::
+
+        \bar{X} = \arg\min_{G \in \mathcal{S}_{++}^n}
+        \sum_{i=1}^{N} w_i \, d_{\text{AIRM}}^2(G, X_i)
+
+    using iterative Karcher flow initialized from the (weighted) Euclidean mean.
+
+    Parameters
+    ----------
+    X : torch.Tensor
+        Batch of SPD matrices with shape ``(batch_size, ..., n, n)``.
+    max_iter : int, default=1
+        Number of Karcher flow iterations. A single iteration is often
+        sufficient for batch normalization; use more (e.g. 50) when a
+        high-accuracy mean is needed.
+    weights : torch.Tensor, optional
+        Per-sample weights with shape broadcastable to ``X``. When ``None``,
+        uniform weights ``1/N`` are used.
+    return_distances : bool, default=False
+        If True, also returns the geodesic distances from each sample to
+        the mean.
+
+    Returns
+    -------
+    mean : torch.Tensor
+        Fréchet mean with shape ``(1, ..., n, n)``.
+    distances : torch.Tensor
+        Only returned when ``return_distances=True``. Geodesic distances
+        from each sample to the mean, with shape ``(batch_size, ...)``.
+
+    See Also
+    --------
+    :func:`karcher_mean_iteration` : Single Karcher step (lower-level).
+    :func:`~spd_learn.functional.airm_distance` : Pairwise AIRM distance.
+
+    References
+    ----------
+    See :cite:p:`pennec2006riemannian` for details on Karcher mean computation.
+    """
+    batch = X.detach()
+
+    if weights is None:
+        mean = batch.mean(dim=0, keepdim=True)
+    else:
+        mean = (batch * weights).sum(dim=0, keepdim=True)
+
+    for _ in range(max_iter):
+        mean_sqrt, mean_invsqrt = matrix_sqrt_inv.apply(mean)
+        X_tangent = matrix_log.apply(mean_invsqrt @ batch @ mean_invsqrt)
+        if weights is None:
+            mean_tangent = X_tangent.mean(dim=0, keepdim=True)
+        else:
+            mean_tangent = (X_tangent * weights).sum(dim=0, keepdim=True)
+        mean = mean_sqrt @ matrix_exp.apply(mean_tangent) @ mean_sqrt
+
+    if return_distances:
+        mean_sqrt, mean_invsqrt = matrix_sqrt_inv.apply(mean)
+        X_tangent = matrix_log.apply(mean_invsqrt @ batch @ mean_invsqrt)
+        distances = torch.norm(X_tangent, p="fro", dim=(-2, -1))
+        return mean, distances
+
+    return mean
 
 
 def spd_centering(
@@ -339,6 +415,7 @@ def lie_group_variance(
 
 
 __all__ = [
+    "frechet_mean",
     "karcher_mean_iteration",
     "lie_group_variance",
     "spd_centering",

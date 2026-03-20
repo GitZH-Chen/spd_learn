@@ -26,7 +26,7 @@ from ..functional import (
     matrix_sqrt,
 )
 from ..functional.batchnorm import (
-    karcher_mean_iteration,
+    frechet_mean,
     lie_group_variance,
     spd_centering,
     spd_cholesky_congruence,
@@ -63,9 +63,8 @@ class SPDBatchNormLie(nn.Module):
         Running statistics momentum.
     eps : float, default=1e-5
         Numerical stability constant for variance normalization.
-    karcher_steps : int, default=1
-        Number of Karcher flow iterations used by the AIM mean.  Iterations
-        stop early when the tangent update norm falls below ``1e-5``.
+    n_iter : int, default=1
+        Number of Karcher flow iterations used by the AIM mean.
     congruence : {"cholesky", "eig"}, default="cholesky"
         Implementation of the AIM congruence action (centering/biasing).
         ``"cholesky"`` uses the Cholesky factor :math:`L` of :math:`P` to
@@ -91,7 +90,7 @@ class SPDBatchNormLie(nn.Module):
         beta=0.0,
         momentum=0.1,
         eps=1e-5,
-        karcher_steps=1,
+        n_iter=1,
         congruence="cholesky",
         device=None,
         dtype=None,
@@ -113,7 +112,7 @@ class SPDBatchNormLie(nn.Module):
         self.beta = beta
         self.momentum = momentum
         self.eps = eps
-        self.karcher_steps = karcher_steps
+        self.n_iter = n_iter
         self.congruence = congruence
 
         self.bias = nn.Parameter(torch.empty(1, n, n, device=device, dtype=dtype))
@@ -182,15 +181,7 @@ class SPDBatchNormLie(nn.Module):
     def _frechet_mean(self, X_def):
         """Fréchet mean in the deformed space."""
         if self.metric == "AIM":
-            batch = X_def.detach()
-            mean = batch.mean(dim=0, keepdim=True)
-            for _ in range(self.karcher_steps):
-                mean, mean_tangent = karcher_mean_iteration(
-                    batch, mean, detach=True, return_tangent=True
-                )
-                if mean_tangent.norm(dim=(-1, -2)).max() < 1e-5:
-                    break
-            return mean
+            return frechet_mean(X_def, max_iter=self.n_iter)
         return X_def.detach().mean(dim=0, keepdim=True)
 
     def _scale(self, X, var):

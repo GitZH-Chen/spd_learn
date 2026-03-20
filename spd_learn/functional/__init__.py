@@ -16,6 +16,7 @@ matrices, organized into:
 
 from .autograd import modeig_backward, modeig_forward
 from .batchnorm import (
+    frechet_mean,
     karcher_mean_iteration,
     lie_group_variance,
     spd_centering,
@@ -157,6 +158,7 @@ __all__ = [
     "ledoit_wolf",
     "shrinkage_covariance",
     # Batch normalization
+    "frechet_mean",
     "karcher_mean_iteration",
     "lie_group_variance",
     "spd_centering",
