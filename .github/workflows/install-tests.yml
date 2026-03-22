@@ -49,7 +49,7 @@ jobs:
           path: |
             ~/mne_data
             ~/nilearn_data
-          key: ${{ runner.os }}-${{ matrix.python-version }}-data-${{ github.run_id }}
+          key: ${{ runner.os }}-${{ matrix.python-version }}-data-v1
           restore-keys: |
             ${{ runner.os }}-${{ matrix.python-version }}-data
 
@@ -103,7 +103,7 @@ jobs:
           path: |
             ~/mne_data
             ~/nilearn_data
-          key: ${{ runner.os }}-integration-data-${{ github.run_id }}
+          key: ${{ runner.os }}-integration-data-v1
           restore-keys: |
             ${{ runner.os }}-integration-data
 
