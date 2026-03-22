@@ -39,6 +39,7 @@ from spd_learn.modules import (
     SPDBatchNormMeanVar,
 )
 
+
 torch.manual_seed(42)
 np.random.seed(42)
 
@@ -224,8 +225,12 @@ for label, accs, color in [
 for metric, (_, accs) in liebn_results.items():
     epochs, vals = zip(*accs)
     ax2.plot(
-        epochs, vals, "o-", label=f"LieBN ({metric})",
-        color=colors[metric], markersize=3,
+        epochs,
+        vals,
+        "o-",
+        label=f"LieBN ({metric})",
+        color=colors[metric],
+        markersize=3,
     )
 ax2.set_xlabel("Epoch")
 ax2.set_ylabel("Test Accuracy")
@@ -328,8 +333,7 @@ for metric in ["AIM", "LEM", "LCM"]:
     loss.backward()
     eigvals = torch.linalg.eigvalsh(out.detach())
     print(
-        f"{metric}: min_eigval={eigvals.min():.2e}, "
-        f"grad_norm={X_check.grad.norm():.4f}"
+        f"{metric}: min_eigval={eigvals.min():.2e}, grad_norm={X_check.grad.norm():.4f}"
     )
     X_check.grad = None
 

@@ -45,7 +45,9 @@ import numpy as np
 import torch
 
 from pyriemann.datasets import make_gaussian_blobs
+
 from spd_learn.modules import SPDBatchNormLie
+
 
 torch.manual_seed(42)
 
@@ -87,7 +89,9 @@ for metric in ["LEM", "LCM", "AIM"]:
         _ = bn(X_bench)
     elapsed = (time.time() - t0) / 20
     timings[metric] = elapsed * 1000
-    print(f"{metric}: {elapsed*1000:.1f} ms/batch ({n_bench}x{n_bench}, batch={batch_size})")
+    print(
+        f"{metric}: {elapsed * 1000:.1f} ms/batch ({n_bench}x{n_bench}, batch={batch_size})"
+    )
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.bar(
@@ -177,7 +181,9 @@ for col, metric in enumerate(["LEM", "LCM", "AIM"], start=1):
         color=metric_colors[metric],
         alpha=0.8,
     )
-    ax.set_title(f"{metric} Eigenvalues", fontweight="bold", color=metric_colors[metric])
+    ax.set_title(
+        f"{metric} Eigenvalues", fontweight="bold", color=metric_colors[metric]
+    )
     ax.set_xlabel("Index")
 
 plt.suptitle(
@@ -231,8 +237,7 @@ for ax, theta, color in zip(axes, thetas, theta_colors):
     ax.grid(True, alpha=0.3)
 
     print(
-        f"AIM (theta={theta}): eigval range "
-        f"[{eigvals.min():.3f}, {eigvals.max():.3f}]"
+        f"AIM (theta={theta}): eigval range [{eigvals.min():.3f}, {eigvals.max():.3f}]"
     )
 
 axes[0].set_ylabel("Eigenvalue")

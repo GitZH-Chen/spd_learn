@@ -25,6 +25,7 @@ import torch.nn as nn
 
 from spd_learn.modules import BiMap, LogEig, ReEig, SPDBatchNormLie
 
+
 ######################################################################
 # Step 1: Choose Your Normalization Layer
 # ----------------------------------------
